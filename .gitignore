@@ -1,1 +1,2 @@
-data/stanford_indoor3d_text
+data/*
+pretrained_models/*
