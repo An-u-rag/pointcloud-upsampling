@@ -36,7 +36,7 @@ class TNet(nn.Module):
 
     def forward(self, x):  # input and output is B x N x 3 ?
         B, C, N = x.size()
-        print(B, C, N)
+
         x = self.relu(self.bn1(self.conv1(x)))
         x = self.relu(self.bn2(self.conv2(x)))
         x = self.relu(self.bn3(self.conv3(x)))
@@ -78,9 +78,9 @@ class PointNetEncoder(nn.Module):
         if self.feature_transform:
             self.fstn = TNet(64, True)
 
-    def forward(self, x):  # input should be Batch x Num points x 3 (xyz)
+    def forward(self, x):  # input should be Batch x 3 (xyz) x Num points
         B, C, N = x.size()
-        print(B, C, N)
+
         # Here if we have input with more than just x, y, z, then we need to:
         # 1. split to x and feature vectos
         # 2. matrix multiply x and transform
@@ -88,6 +88,7 @@ class PointNetEncoder(nn.Module):
         if C > 3:
             features = x[:, 3:, :]
             x = x[:, :3, :]
+
         T = self.stn(x)
 
         x = x.transpose(2, 1)
@@ -125,5 +126,5 @@ class PointNetEncoder(nn.Module):
 if __name__ == '__main__':
     import torch
     model = PointNetEncoder(6)
-    xyz = torch.rand(6, 6, 2048)
+    xyz = torch.rand(8, 6, 4092)
     (model(xyz))

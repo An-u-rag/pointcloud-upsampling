@@ -12,9 +12,9 @@ import torchvision.utils as vutils
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-from pointnet import PointNetEncoder, TNet
+from models.pointnet import PointNetEncoder, TNet
 
-from utils_samplers import *
+from models.utils_samplers import *
 
 
 class PointNetSetAbstraction(nn.Module):
