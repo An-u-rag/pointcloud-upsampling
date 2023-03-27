@@ -16,8 +16,8 @@ def square_distance(src, dst):
          = sum(src**2,dim=-1)+sum(dst**2,dim=-1)-2*src^T*dst
 
     Input:
-        src: source points, [B, N, C]
-        dst: target points, [B, M, C]
+        src: source points, [B, N, C] (eg: [B, 1024, 3])
+        dst: target points, [B, M, C] (eg: [B, 512, 3])
     Output:
         dist: per-point square distance, [B, N, M]
     """
