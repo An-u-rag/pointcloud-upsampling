@@ -12,9 +12,9 @@ import torchvision.utils as vutils
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-from pointnet import PointNetEncoder, TNet
+from models.pointnet import PointNetEncoder, TNet
 
-from utils_samplers import *
+from models.utils_samplers import *
 
 
 class PointNetSetAbstraction(nn.Module):
@@ -54,8 +54,8 @@ class PointNetSetAbstraction(nn.Module):
         # [B, N, C], [B, N, S, D+3] tensors since new_points gets concated in the front with normalized x,y,z
         # for example a points tensor with [B, 9, N] as input will be returned as [B, 12, S, N] as output
 
-        # new_xyz: sampled points position data, [B, npoint, C]
-        # new_points: sampled points data, [B, npoint, nsample, C+D]
+        # new_xyz: sampled points position data, [B, npoint, C] npoint -> number of centroids
+        # new_points: sampled points data, [B, npoint, nsample, C+D] nsample -> number of samples around each centroid
         new_points = new_points.permute(
             0, 3, 2, 1)  # [B, C+D, nsample, npoint]
         for i, conv in enumerate(self.mlp_convs):
@@ -71,11 +71,11 @@ class PointNetFeaturePropagation(nn.Module):
     def __init__(self, in_channel, mlp):
         super(PointNetFeaturePropagation, self).__init__()
         self.mlp_convs = nn.ModuleList()
-        self.mlp_bns = nn.ModuleList()
+        # self.mlp_bns = nn.ModuleList()
         last_channel = in_channel
         for out_channel in mlp:
-            self.mlp_convs.append(nn.Conv1d(last_channel, out_channel, 1))
-            self.mlp_bns.append(nn.BatchNorm1d(out_channel))
+            self.mlp_convs.append(nn.Conv2d(last_channel, out_channel, 1))
+            # self.mlp_bns.append(nn.BatchNorm1d(out_channel))
             last_channel = out_channel
 
     def forward(self, xyz1, xyz2, points1, points2):
@@ -99,6 +99,7 @@ class PointNetFeaturePropagation(nn.Module):
             interpolated_points = points2.repeat(1, N, 1)
         else:
             # [B, 1024, 512] = [B, 1024, 3], [B, 512, 3]
+            # print(f"xyz1: {xyz1.size()}, xyz2: {xyz2.size()}")
             dists = square_distance(xyz1, xyz2)
             # sort distances with scending order of distance [B, 1024, 512]
             dists, idx = dists.sort(dim=-1)
@@ -118,16 +119,17 @@ class PointNetFeaturePropagation(nn.Module):
             new_points = interpolated_points
 
         new_points = new_points.permute(0, 2, 1)
+        new_points = new_points.unsqueeze(-1)
         for i, conv in enumerate(self.mlp_convs):
-            bn = self.mlp_bns[i]
-            new_points = F.relu(bn(conv(new_points)))
+            # bn = self.mlp_bns[i]
+            new_points = F.relu(conv(new_points))
         return new_points
 
 # PointNet++ encoder which extracts multiscale features from input point cloud.
 
 
 class PointNetPPEncoder(nn.Module):
-    def __init__(self, npoint=1024, nlayers=4, radii=[0.05, 0.1, 0.2, 0.3], nsamples=[32, 32, 32, 32], is_color=True, is_normal=False):
+    def __init__(self, mlplists, npoint=1024, nlayers=4, radii=[0.05, 0.1, 0.2, 0.3], nsamples=[32, 32, 32, 32], is_color=True, is_normal=False):
         super(PointNetPPEncoder, self).__init__()
         assert len(radii) == nlayers == len(nsamples)
         # Channels accounting for color and or normals for each point
@@ -148,12 +150,7 @@ class PointNetPPEncoder(nn.Module):
         ]
         self.radii = radii
         self.nsamples = nsamples
-        self.mlplists = [
-            [32, 32, 64],
-            [64, 64, 128],
-            [128, 128, 256],
-            [256, 256, 512]
-        ]
+        self.mlplists = mlplists
         # Feature Extraction at Multiple Scales inside each set abstraction layer to get multi scale features
         self.salayers = nn.ModuleList()
 
@@ -176,11 +173,10 @@ class PointNetPPEncoder(nn.Module):
         # l_xyz -> [[B, 3, 1024], [B, 3, 1024], [B, 3, 512], [B, 3, 256], [B, 3, 128]]
         # l_points -> [[B, 9, 1024], [B, 64, 1024], [B, 128, 512], [B, 256, 256], [B, 512, 128]]
         # Now send the xyz and points through set abstraction layers
-        print(f"l_xyz: {l_xyz[0].size()}, l_points: {l_points[0].size()}")
+        # print(f"l_xyz: {l_xyz[0].size()}, l_points: {l_points[0].size()}")
         for i in range(self.nlayers):
             l_xyz[i+1], l_points[i+1] = self.salayers[i](l_xyz[i], l_points[i])
-            print(
-                f"l_xyz: {l_xyz[i+1].size()}, l_points: {l_points[i+1].size()}")
+            # print(f"l_xyz: {l_xyz[i+1].size()}, l_points: {l_points[i+1].size()}")
 
         # Now we have multi scale features at every layer of point cloud abstraction
         # We can basically do anything with these learned features
@@ -189,27 +185,22 @@ class PointNetPPEncoder(nn.Module):
 
 # Feature Aggregation using Feature Propagation layers of PointNet++
 # The Nl x Cl feature tensors need to be interpolated to a single NxC tensor for feature expansion
-class PointNetPPFeatureInterpolation:
-    def __init__(self):
-        super(PointNetPPFeatureInterpolation, self).__init__()
-
-        self.mlplists = [
-            [32, 32, 64],
-            [64, 64, 128],
-            [128, 128, 256],
-            [256, 256, 512]
-        ]
-
-        self.mlp = nn.ModuleList
+class PointNetPPDecoder(nn.Module):
+    def __init__(self, mlplists):
+        super(PointNetPPDecoder, self).__init__()
+        self.mlplists = mlplists
+        self.fp_mlps = nn.ModuleList()
 
         for i in range(len(self.mlplists) - 1):
-            self.mlp.append(nn.Conv2d(self.mlplists[i+1][-1], 64, 1))
-            self.mlp.append(nn.ReLU(inplace=True))
+            self.fp_mlps.append(PointNetFeaturePropagation(
+                self.mlplists[i+1][-1], [64]))
 
     def forward(self, l_xyz, l_points):
         up_feats = []
-        for k in range(len(self.mlp)//2):
-            cur_upfeats = self.mlp[k](l_xyz[k+2], )
+        for k in range(len(self.fp_mlps)):
+            cur_upfeats = self.fp_mlps[k](
+                l_xyz[0], l_xyz[k+2], None, l_points[k+2])
+            up_feats.append(cur_upfeats)
 
 
 if __name__ == '__main__':

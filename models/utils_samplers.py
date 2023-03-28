@@ -103,7 +103,7 @@ def query_ball_point(radius, nsample, xyz, new_xyz):
     # Get the sorted distances for each point in 1024
     sort_dis, group_idx = sqrdists.sort(dim=-1)
     # Check if distance is greater than radius, if so, drop it to max index
-    group_idx[sort_dis > radius ** 2] = N
+    group_idx[sort_dis > radius**2] = N
     # Get first 32 indices from sorted distance array
     group_idx = group_idx[:, :, :nsample]
     group_first = group_idx[:, :, 0].view(

@@ -11,7 +11,7 @@ WRITE_DIR = f"data/pointclouds/randomgen/data_{ranstr}"
 
 
 class RandomDataset(Dataset):
-    def __init__(self, train=True, num_pointclouds=30, num_point=4096, channels=6):
+    def __init__(self, train=True, num_pointclouds=30, num_point=4096, channels=9):
         super().__init__()
         self.num_pointclouds = num_pointclouds
         self.num_point = num_point

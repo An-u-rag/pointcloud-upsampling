@@ -3,6 +3,7 @@ import os
 from data_utils.RandomDataLoader import RandomDataset
 from models.pointnetpp import PointNetPPEncoder
 from models.pointnet import PointNetEncoder
+from models.punet import PUnet
 import torch
 import torch.utils.data as Data
 import torch.nn as nn
@@ -21,14 +22,14 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 def parse_args():
     parser = argparse.ArgumentParser('Model')
-    parser.add_argument('--model', type=str, default='pointnetpp',
+    parser.add_argument('--model', type=str, default='punet',
                         help='model name [default: pointnet_sem_seg]')
     parser.add_argument('--epochs', default=32, type=int,
                         help='Epochs to run [default: 32]')
     parser.add_argument('--batchsize', default=8, type=int,
                         help='Batch size for num pointclouds processed per batch')
-    parser.add_argument('--npoint', type=int, default=4096,
-                        help='Point Number [default: 4096]')
+    parser.add_argument('--npoint', type=int, default=1024,
+                        help='Point Number [default: 1024]')
 
     return parser.parse_args()
 
@@ -40,10 +41,10 @@ def main(args):
     # So the num_pointclouds should be same for both datasets
     BATCHSIZE = args.batchsize
     TRAIN_DATASET = RandomDataset(
-        train=True, num_pointclouds=30, num_point=4092, channels=6)
+        train=True, num_pointclouds=30, num_point=args.npoint, channels=6)
     print("Train Dataset loaded")
     TEST_DATASET = RandomDataset(
-        train=False, num_pointclouds=30, num_point=4092, channels=6)
+        train=False, num_pointclouds=30, num_point=args.npoint, channels=6)
     print("Test Dataset Loaded")
     # Feed datasets to dataloader
     train_loader = Data.DataLoader(
@@ -55,6 +56,9 @@ def main(args):
     if args.model == "pointnetpp" or args.model == "pointnet++":
         # Load PointNet++ Encoder Model for feature extraction
         model = PointNetPPEncoder(is_color=True, is_normal=False).to(device)
+    elif args.model == "punet":
+        # Load PU-Net for point upsampling
+        model = PUnet(is_color=True, is_normal=False).to(device)
     else:
         # Load PointNet Encoder Model for feature extraction
         model = PointNetEncoder(in_channels=6).to(device)
