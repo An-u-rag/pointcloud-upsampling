@@ -35,10 +35,10 @@ class PointNetSetAbstraction(nn.Module):
     def forward(self, xyz, points):
         """
         Input:
-            xyz: input points position data, [B, C, N]
-            points: input points data, [B, D, N]
+            xyz: input points position data, [B, C, N] (eg: [B, 3, 1024])
+            points: input points data, [B, D, N] (eg: [B, 9, 1024])
         Return:
-            new_xyz: sampled points position data, [B, C, S]
+            new_xyz: sampled points position data, [B, C, S] 
             new_points: sample points feature data, [B, D', S]
         """
         xyz = xyz.permute(0, 2, 1)
@@ -49,8 +49,8 @@ class PointNetSetAbstraction(nn.Module):
             new_xyz, new_points = sample_and_group_all(xyz, points)
         else:
             new_xyz, new_points = sample_and_group(
-                self.npoint, self.radius, self.nsample, xyz, points)
-        # The sample and group functions take in a [B, C, N] and [B, D (where D = C+X), N] tensors and return
+                self.npoint, self.radius, self.nsample, xyz, points)  # eg: [B, 1024, 3], [B, 1024, 9]
+        # The sample and group functions take in a [B, N, C] and [B, N, D (where D = C+X)] tensors and return
         # [B, N, C], [B, N, S, D+3] tensors since new_points gets concated in the front with normalized x,y,z
         # for example a points tensor with [B, 9, N] as input will be returned as [B, 12, S, N] as output
 
@@ -150,9 +150,9 @@ class PointNetPPEncoder(nn.Module):
         self.nsamples = nsamples
         self.mlplists = [
             [32, 32, 64],
-            [64, 64, 128],  # 0
-            [128, 128, 256],  # 1
-            [256, 256, 512]  # 2
+            [64, 64, 128],
+            [128, 128, 256],
+            [256, 256, 512]
         ]
         # Feature Extraction at Multiple Scales inside each set abstraction layer to get multi scale features
         self.salayers = nn.ModuleList()
@@ -173,6 +173,8 @@ class PointNetPPEncoder(nn.Module):
             l_points[0] = xyz
             l_xyz[0] = xyz[:, :3, :]
 
+        # l_xyz -> [[B, 3, 1024], [B, 3, 1024], [B, 3, 512], [B, 3, 256], [B, 3, 128]]
+        # l_points -> [[B, 9, 1024], [B, 64, 1024], [B, 128, 512], [B, 256, 256], [B, 512, 128]]
         # Now send the xyz and points through set abstraction layers
         print(f"l_xyz: {l_xyz[0].size()}, l_points: {l_points[0].size()}")
         for i in range(self.nlayers):
@@ -187,6 +189,13 @@ class PointNetPPEncoder(nn.Module):
 
 if __name__ == '__main__':
     import torch
-    model = PointNetPPEncoder(is_color=True, is_normal=True)
-    xyz = torch.rand(6, 9, 1024)
+    import time
+    start = time.time()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cpu":
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+    # device = "cpu"
+    model = PointNetPPEncoder(is_color=True, is_normal=True).to(device)
+    xyz = torch.rand(6, 9, 1024).to(device)
     (model(xyz))
+    print(f"Time Elapsed: {time.time() - start}")
