@@ -200,7 +200,9 @@ class PointNetPPDecoder(nn.Module):
         for k in range(len(self.fp_mlps)):
             cur_upfeats = self.fp_mlps[k](
                 l_xyz[0], l_xyz[k+2], None, l_points[k+2])
-            up_feats.append(cur_upfeats)
+            up_feats.append(cur_upfeats.squeeze(-1))
+
+        return up_feats
 
 
 if __name__ == '__main__':
