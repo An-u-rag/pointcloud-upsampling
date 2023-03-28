@@ -187,6 +187,31 @@ class PointNetPPEncoder(nn.Module):
         return l_xyz, l_points
 
 
+# Feature Aggregation using Feature Propagation layers of PointNet++
+# The Nl x Cl feature tensors need to be interpolated to a single NxC tensor for feature expansion
+class PointNetPPFeatureInterpolation:
+    def __init__(self):
+        super(PointNetPPFeatureInterpolation, self).__init__()
+
+        self.mlplists = [
+            [32, 32, 64],
+            [64, 64, 128],
+            [128, 128, 256],
+            [256, 256, 512]
+        ]
+
+        self.mlp = nn.ModuleList
+
+        for i in range(len(self.mlplists) - 1):
+            self.mlp.append(nn.Conv2d(self.mlplists[i+1][-1], 64, 1))
+            self.mlp.append(nn.ReLU(inplace=True))
+
+    def forward(self, l_xyz, l_points):
+        up_feats = []
+        for k in range(len(self.mlp)//2):
+            cur_upfeats = self.mlp[k](l_xyz[k+2], )
+
+
 if __name__ == '__main__':
     import torch
     import time
