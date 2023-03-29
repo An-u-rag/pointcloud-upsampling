@@ -169,6 +169,9 @@ class PointNetPPEncoder(nn.Module):
         if self.is_normal or self.is_color:
             l_points[0] = xyz
             l_xyz[0] = xyz[:, :3, :]
+        else:
+            l_points[0] = xyz
+            l_xyz[0] = xyz
 
         # l_xyz -> [[B, 3, 1024], [B, 3, 1024], [B, 3, 512], [B, 3, 256], [B, 3, 128]]
         # l_points -> [[B, 9, 1024], [B, 64, 1024], [B, 128, 512], [B, 256, 256], [B, 512, 128]]
