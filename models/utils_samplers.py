@@ -16,16 +16,19 @@ def square_distance(src, dst):
          = sum(src**2,dim=-1)+sum(dst**2,dim=-1)-2*src^T*dst
 
     Input:
-        src: source points, [B, N, C]
-        dst: target points, [B, M, C]
+        src: source points, [B, N, C] (eg: [B, 1024, 3])
+        dst: target points, [B, M, C] (eg: [B, 512, 3])
     Output:
         dist: per-point square distance, [B, N, M]
     """
-    B, N, _ = src.shape
+    B, N, C = src.shape
     _, M, _ = dst.shape
-    dist = -2 * torch.matmul(src, dst.permute(0, 2, 1))
-    dist += torch.sum(src ** 2, -1).view(B, N, 1)
-    dist += torch.sum(dst ** 2, -1).view(B, 1, M)
+    # dist = -2 * torch.matmul(src, dst.permute(0, 2, 1))
+    # dist += torch.sum(src ** 2, -1).view(B, N, 1)
+    # dist += torch.sum(dst ** 2, -1).view(B, 1, M)
+    diff = src.unsqueeze(2).expand(B, N, M, C) - \
+        dst.unsqueeze(1).expand(B, N, M, C)
+    dist = torch.sum(diff ** 2, -1)
     return dist
 
 
@@ -33,11 +36,16 @@ def index_points(points, idx):
     """
 
     Input:
-        points: input points data, [B, N, C]
-        idx: sample index data, [B, S]
+        points: input points data, [B, N, C] (eg: [B, 1024, 3])
+        idx: sample index data, [B, S] (eg: B, 1024)
     Return:
-        new_points:, indexed points data, [B, S, C]
+        new_points:, indexed points data, [B, S, C] 
     """
+    S = idx.size(1)
+    if idx.device != "cpu":
+        # print("Entered1: ", idx[0, 0])
+        idx = torch.where(idx > S-1, S-1, idx).to(idx.device)
+        # print("Entered2: ", idx[0, 0])
     device = points.device
     B = points.shape[0]
     view_shape = list(idx.shape)
@@ -87,35 +95,52 @@ def query_ball_point(radius, nsample, xyz, new_xyz):
     device = xyz.device
     B, N, C = xyz.shape
     _, S, _ = new_xyz.shape
-    group_idx = torch.arange(N, dtype=torch.long).to(
-        device).view(1, 1, N).repeat([B, S, 1])
-    sqrdists = square_distance(new_xyz, xyz)
-    group_idx[sqrdists > radius ** 2] = N
-    group_idx = group_idx.sort(dim=-1)[0][:, :, :nsample]
-    group_first = group_idx[:, :, 0].view(B, S, 1).repeat([1, 1, nsample])
+    # group_idx = torch.arange(N, dtype=torch.long).to(
+    #     device).view(1, 1, N).repeat([B, S, 1])  # [B, 1024, 1024] (contains indices up to N=1024)
+    sqrdists = square_distance(new_xyz, xyz)  # [B, 1024, 1024]
+    # group_idx[sqrdists > radius ** 2] = N # If radius is too small, then all the indices are set to 1024 ###
+
+    # Get the sorted distances for each point in 1024
+    sort_dis, group_idx = sqrdists.sort(dim=-1)
+    # Check if distance is greater than radius, if so, drop it to max index
+    group_idx[sort_dis > radius**2] = N
+    # Get first 32 indices from sorted distance array
+    group_idx = group_idx[:, :, :nsample]
+    group_first = group_idx[:, :, 0].view(
+        B, S, 1).repeat([1, 1, nsample])  # reshape
     mask = group_idx == N
     group_idx[mask] = group_first[mask]
+
+    # group_idx = group_idx.sort(dim=-1)[0][:, :, :nsample]
+    # group_first = group_idx[:, :, 0].view(B, S, 1).repeat([1, 1, nsample])
+    # mask = group_idx == N
+    # group_idx[mask] = group_first[mask]
     return group_idx
 
 
 def sample_and_group(npoint, radius, nsample, xyz, points, returnfps=False):
     """
     Input:
-        npoint:
+        npoint: (eg: 1024)
         radius:
-        nsample:
-        xyz: input points position data, [B, N, 3]
-        points: input points data, [B, N, D]
+        nsample: (eg: 32)
+        xyz: input points position data, [B, N, 3] (eg: [B, 1024, 3])
+        points: input points data, [B, N, D] (eg: [B, 1024, 9])
     Return:
-        new_xyz: sampled points position data, [B, npoint, nsample, 3]
-        new_points: sampled points data, [B, npoint, nsample, 3+D]
+        new_xyz: sampled points position data, [B, npoint, nsample, 3] (eg: [B, 1024, 32, 3])
+        new_points: sampled points data, [B, npoint, nsample, 3+D] (eg: [B, 1024, 32, 3+9])
     """
     B, N, C = xyz.shape
     S = npoint
-    fps_idx = farthest_point_sample(xyz, npoint)  # [B, npoint, C]
-    new_xyz = index_points(xyz, fps_idx)
+    fps_idx = farthest_point_sample(xyz, npoint)  # [B, 1024, 3]
+    # print("fps_idx: ", fps_idx.size())  # [B, 1024]
+    new_xyz = index_points(xyz, fps_idx)  # [B, 1024, 3], [B, 1024]
+    # print("new_xyz: ", new_xyz.size())  # [B, 1024, 3]
+    # [B, 1024, 3], [B, 1024, 3]
     idx = query_ball_point(radius, nsample, xyz, new_xyz)
-    grouped_xyz = index_points(xyz, idx)  # [B, npoint, nsample, C]
+    # print("idx: ", idx.size())  # [B, 1024, 32]
+    # [B, npoint, nsample, C] = [B, 1024, 3], [B, 1024, 32]
+    grouped_xyz = index_points(xyz, idx)
     grouped_xyz_norm = grouped_xyz - new_xyz.view(B, S, 1, C)
 
     if points is not None:

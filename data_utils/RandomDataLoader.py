@@ -11,20 +11,21 @@ WRITE_DIR = f"data/pointclouds/randomgen/data_{ranstr}"
 
 
 class RandomDataset(Dataset):
-    def __init__(self, train=True, num_pointclouds=30, num_point=4096, channels=6):
+    def __init__(self, train=True, num_pointclouds=30, num_point=1024, upsample_factor=4, channels=3):
         super().__init__()
         self.num_pointclouds = num_pointclouds
         self.num_point = num_point
         self.channels = channels
+        self.upsample_factor = upsample_factor
         # generate random point clouds with 2048 points each with X,Y,Z,R,G,B
         # Both XYZ and RGB are already normalized since both lie in [0,1) range
         self.train = train
         if self.train:
             self.data = np.random.rand(
-                int(self.num_pointclouds * 0.8), self.num_point, self.channels)  # B x N x C
+                int(self.num_pointclouds * 0.8), self.num_point*self.upsample_factor, self.channels)  # B x N x C
         else:
             self.data = np.random.rand(
-                int(self.num_pointclouds * 0.2), self.num_point, self.channels)
+                int(self.num_pointclouds * 0.2), self.num_point*self.upsample_factor, self.channels)
 
         # Write the randomly generated point cloud data to a text file
         # Check if WRITE_DIR exists and make if not
@@ -44,16 +45,15 @@ class RandomDataset(Dataset):
                     f.write('\n')
 
     def __getitem__(self, i):
-        # Return the indexed point cloud data
-        # Since all our randomly generated poitn clouds have same number of points
-        # We dont need to sample each of them to fixed number of points
-        # So if one poitn cloud has 4096 points, all of them have 4096 points.
-        # The Furthest point sampling is done in the pointSetAbstraction Layer anyway
-        # Realistically, with real data, we would have to do that and normalization, etc.
-        # SO we just return the point cloud at index i
+        # We have generated the upsampled point cloud with 4096 points
+        # The upsampling factor is r=4
+        # Therefore out input will be downscaled to 4096/4 = 1024 and label with the entire pointcloud
 
-        # OH also no labels yet since we are just doing feature extraction and there is no loss function
-        return self.data[i]  # N x C
+        label = self.data[i]  # 4096 x C
+        input_idx = np.random.choice(
+            self.num_point * self.upsample_factor, self.num_point, replace=False)
+        input = label[input_idx]
+        return input, label
 
     def __len__(self):
         return len(self.data)
