@@ -1,6 +1,7 @@
 import argparse
 import os
 from data_utils.RandomDataLoader import RandomDataset
+from data_utils.S3DISDataLoader import S3DISDataset
 from models.pointnetpp import PointNetPPEncoder
 from models.pointnet import PointNetEncoder
 from models.punet import PUnet, UpsampleLoss
@@ -41,6 +42,7 @@ def parse_args():
 
 
 def main(args):
+    print(device)
     # train dataset and train loader
     # _Random for now_
     # RandomDataset splits train and test % as 80 and 20 respectively.
@@ -51,11 +53,11 @@ def main(args):
         CHANNELS += 3
     if args.is_normal:
         CHANNELS += 3
-    TRAIN_DATASET = RandomDataset(
-        train=True, num_pointclouds=30, num_point=args.npoint, upsample_factor=args.upsample_rate, channels=CHANNELS)
+    TRAIN_DATASET = S3DISDataset(
+        train=True, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
     print("Train Dataset loaded")
-    TEST_DATASET = RandomDataset(
-        train=False, num_pointclouds=30, num_point=args.npoint, upsample_factor=args.upsample_rate, channels=CHANNELS)
+    TEST_DATASET = S3DISDataset(
+        train=False, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
     print("Test Dataset Loaded")
     # Feed datasets to dataloader
     train_loader = Data.DataLoader(
