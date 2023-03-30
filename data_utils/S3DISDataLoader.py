@@ -4,13 +4,12 @@ import numpy as np
 from tqdm import tqdm
 import time
 
-DATA_DIR = "../data/pointclouds/s3dis_npy"
+DATA_DIR = "data/pointclouds/s3dis_npy"
 
 
 class S3DISDataset(Dataset):
-    def __init__(self, train=True, num_pointclouds=30, num_point=1024, upsample_factor=4, test_area=5, is_color=False):
+    def __init__(self, train=True, num_point=1024, upsample_factor=4, test_area=5, is_color=False):
         super().__init__()
-        self.num_pointclouds = num_pointclouds
         self.num_point = num_point
         self.is_color = is_color
         self.channels = 6 if is_color else 3
@@ -62,24 +61,37 @@ class S3DISDataset(Dataset):
         print(f"Point clouds patch extraction done: {self.pointclouds.shape}")
 
         # Now Normalize the coordinates with their respective min and max values
+        # TO Normalize we need to find max and min coordinates of each point cloud
+        # (xi – min(x)) / (max(x) – min(x))
+
+        print("///////////////////////////////////////////")
+        for i, pc in enumerate(self.pointclouds):
+            self.pointclouds[i, :, 0] = (
+                pc[:, 0] - np.amin(pc[:, 0])) / (np.amax(pc[:, 0]) - np.amin(pc[:, 0]))
+            self.pointclouds[i, :, 1] = (
+                pc[:, 1] - np.amin(pc[:, 1])) / (np.amax(pc[:, 1]) - np.amin(pc[:, 1]))
+            self.pointclouds[i, :, 2] = (
+                pc[:, 2] - np.amin(pc[:, 2])) / (np.amax(pc[:, 2]) - np.amin(pc[:, 2]))
+
+        # Now that we have normalized x, y, z coordinates, we can store it and call it in getitem
 
     def __getitem__(self, i):
         # We have generated the upsampled point cloud with 4096 points
         # The upsampling factor is r=4
         # Therefore out input will be downscaled to 4096/4 = 1024 and label with the entire pointcloud
 
-        label = self.data[i]  # 4096 x C
+        label = self.pointclouds[i]  # 4096 x C
         input_idx = np.random.choice(
             self.num_point * self.upsample_factor, self.num_point, replace=False)
         input = label[input_idx]
         return input, label
 
     def __len__(self):
-        return len(self.data)
+        return len(self.pointclouds)
 
 
 if __name__ == '__main__':
     import torch
     import torch.utils.data as Data
 
-    data = S3DISDataset()
+    data = S3DISDataset(train=False)

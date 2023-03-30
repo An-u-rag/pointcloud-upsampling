@@ -17,7 +17,7 @@ from models.pointnetpp import PointNetPPEncoder, PointNetPPDecoder
 from models.utils_samplers import *
 # from models.sinkhorn import sinkhorn
 from pytorch3d.loss import chamfer
-import pyemd
+# import pyemd
 
 
 def knn(pc, n_neighbors=32):
@@ -141,7 +141,8 @@ class UpsampleLoss(nn.Module):
         grouped_points = grouped_points.permute(0, 3, 1, 2)
         grouped_points = grouped_points - pred.unsqueeze(-1)
         dist2 = torch.sum(grouped_points ** 2, dim=1)
-        dist2 = torch.max(dist2, torch.tensor(self.eps).cuda())
+        dist2 = torch.max(dist2, torch.tensor(
+            self.eps).to(grouped_points.device))
         dist = torch.sqrt(dist2)
         weight = torch.exp(- dist2 / self.h ** 2)
 
