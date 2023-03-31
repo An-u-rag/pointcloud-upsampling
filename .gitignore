@@ -2,3 +2,5 @@ data/*
 pretrained_models/*
 pytorch3d/*
 keops/*
+out/*
+checkpoints/*

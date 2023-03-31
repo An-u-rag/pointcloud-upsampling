@@ -14,10 +14,16 @@ import sys
 from tqdm import tqdm
 import numpy as np
 import time
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import proj3d
+from matplotlib import cm
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
+WRITE_DIR = "checkpoints"
+VISUAL_DIR = os.path.join("out", "train")
+counter = "1"
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
@@ -41,6 +47,38 @@ def parse_args():
     return parser.parse_args()
 
 
+def visualize(pred_data, ground_truth_data, model="punet", epoch=0):  # step x batch x n x 3
+    pred_data = pred_data.reshape(-1, pred_data.shape[-2], pred_data.shape[-1])
+    ground_truth_data = ground_truth_data.reshape(
+        -1, ground_truth_data.shape[-2], ground_truth_data.shape[-1])  # (step * batch) x n x 3
+
+    # Pick first 5 point clouds to show
+    # Iterate through point clouds and display/save as image
+    fig, axs = plt.subplots(2, 5, figsize=(
+        80, 80), dpi=100, layout="tight", subplot_kw=dict(projection='3d', xticks=[], yticks=[]))
+    fig.suptitle(
+        'Upsampled Point Clouds (row 1 -> Predictions, row 2 -> Ground Truth)', fontsize=120)
+    for i in range(5):
+        x_p = pred_data[i, :, 0]
+        y_p = pred_data[i, :, 1]
+        z_p = pred_data[i, :, 2]
+        x_g = ground_truth_data[i, :, 0]
+        y_g = ground_truth_data[i, :, 1]
+        z_g = ground_truth_data[i, :, 2]
+
+        sc1 = axs[0, i].scatter(x_p, y_p, z_p)
+        axs[0, i].set_title(f"PointCloud-{i+1}", fontsize=100)
+        sc2 = axs[1, i].scatter(x_g, y_g, z_g)
+        axs[1, i].set_title(f"PointCloud-{i+1}", fontsize=100)
+
+    savepath = os.path.join(VISUAL_DIR, model + counter, "visuals")
+
+    if not os.path.exists(savepath):
+        os.makedirs(savepath)
+
+    plt.savefig(os.path.join(savepath, f"visual_epoch{epoch}"))
+
+
 def main(args):
     print(device)
     # train dataset and train loader
@@ -61,9 +99,9 @@ def main(args):
     print("Test Dataset Loaded")
     # Feed datasets to dataloader
     train_loader = Data.DataLoader(
-        dataset=TRAIN_DATASET, batch_size=BATCHSIZE, num_workers=4, shuffle=True)
+        dataset=TRAIN_DATASET, batch_size=BATCHSIZE, num_workers=4, shuffle=True, drop_last=True)
     test_loader = Data.DataLoader(
-        dataset=TEST_DATASET, batch_size=BATCHSIZE, num_workers=4, shuffle=False)
+        dataset=TEST_DATASET, batch_size=BATCHSIZE, num_workers=4, shuffle=False, drop_last=True)
 
     # Load Model
     if args.model == "pointnetpp" or args.model == "pointnet++":
@@ -77,7 +115,7 @@ def main(args):
         # Load PointNet Encoder Model for feature extraction
         model = PointNetEncoder(in_channels=6).to(device)
 
-    # Loss function - None as of now but once we add a downstream model, this will be populated
+    # Loss function
     criterion = UpsampleLoss()
     # Optimizer
     optimizer = torch.optim.Adam(
@@ -87,6 +125,8 @@ def main(args):
         print(f"Starting Epoch {epoch}:")
         start = time.time()
         loss_list = []
+        gp_list = []
+        labels_list = []
         model.train()
         for step, (points, labels) in tqdm(enumerate(train_loader), total=len(train_loader)):
             optimizer.zero_grad()
@@ -96,6 +136,7 @@ def main(args):
 
             # Get features for each point cloud at each set abstraction layer
             gp = model(points)  # B x rN x C
+
             emd_loss, rep_loss = criterion(gp, labels, torch.Tensor(1))
             loss = emd_loss + rep_loss
 
@@ -103,8 +144,47 @@ def main(args):
             optimizer.step()
 
             loss_list.append(loss.item())
+            gp_list.append(gp.cpu().detach().numpy())  # steps x B x rN x C
+            labels_list.append(labels.cpu().detach().numpy()
+                               )  # steps x B x rN x C
 
         print(f"epoch: {epoch}, loss: {np.mean(loss_list)}")
+
+        if epoch % 5 == 0:
+            print("Saving Model....")
+            savepath = os.path.join(
+                WRITE_DIR, args.model + counter, "instant", f"{args.model}_epoch_{epoch}.pth")
+            savepath_for_train = os.path.join(
+                WRITE_DIR, args.model + counter, f"{args.model}_epoch_{epoch}.pth")
+            if not os.path.exists(os.path.join(WRITE_DIR, args.model + counter, "instant")):
+                os.makedirs(os.path.join(
+                    WRITE_DIR, args.model + counter, "instant"))
+            torch.save(model.state_dict(), savepath)
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': np.mean(loss_list),
+            }, savepath_for_train)
+
+            print("Saving predicted point clouds and ground truth point clouds")
+            gp_savepath = os.path.join(
+                VISUAL_DIR, args.model + counter, "preds")
+            gt_savepath = os.path.join(
+                VISUAL_DIR, args.model + counter, "ground_truths")
+            if not os.path.exists(gp_savepath):
+                os.makedirs(gp_savepath)
+            if not os.path.exists(gt_savepath):
+                os.makedirs(gt_savepath)
+            np.save(os.path.join(gp_savepath,
+                    f"epoch{epoch}"), np.array(gp_list))
+            np.save(os.path.join(gt_savepath,
+                    f"epoch{epoch}"), np.array(labels_list))
+
+            # Call Visualizer function to store output plots of pointclouds for this epoch
+            visualize(np.array(gp_list), np.array(
+                labels_list), model=args.model, epoch=epoch)
+
         print(f"Staring Evaluation with weights from this epoch")
         # Evaluation at same epoch
         with torch.no_grad():
