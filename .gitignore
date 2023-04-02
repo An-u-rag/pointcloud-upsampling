@@ -4,3 +4,4 @@ pytorch3d/*
 keops/*
 out/*
 checkpoints/*
+*__pycache__*

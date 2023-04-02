@@ -1,10 +1,11 @@
 import argparse
 import os
 from data_utils.RandomDataLoader import RandomDataset
-from data_utils.S3DISDataLoader import S3DISDataset
+from data_utils.S3DISDataLoader import S3DISDataset, S3DISDatasetLarge
 from models.pointnetpp import PointNetPPEncoder
 from models.pointnet import PointNetEncoder
 from models.punet import PUnet, UpsampleLoss
+from models.punet_inputres import PUnetRES
 import torch
 import torch.utils.data as Data
 import torch.nn as nn
@@ -23,7 +24,7 @@ ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
 WRITE_DIR = "checkpoints"
 VISUAL_DIR = os.path.join("out", "train")
-counter = "1"
+counter = "_largedata"
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
@@ -33,9 +34,9 @@ def parse_args():
                         help='model name [default: punet]')
     parser.add_argument('--epochs', default=32, type=int,
                         help='Epochs to run [default: 32]')
-    parser.add_argument('--batchsize', default=8, type=int,
+    parser.add_argument('--batchsize', default=1, type=int,
                         help='Batch size for num pointclouds processed per batch')
-    parser.add_argument('--npoint', type=int, default=1024,
+    parser.add_argument('--npoint', type=int, default=8192,
                         help='Number of points in Input Point Cloud [default: 1024]')
     parser.add_argument('--upsample_rate', type=int, default=4,
                         help='Rate to upsample at [default: 4]')
@@ -91,11 +92,11 @@ def main(args):
         CHANNELS += 3
     if args.is_normal:
         CHANNELS += 3
-    TRAIN_DATASET = S3DISDataset(
-        train=True, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
+    TRAIN_DATASET = S3DISDatasetLarge(
+        train=True, num_pointclouds=30, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
     print("Train Dataset loaded")
-    TEST_DATASET = S3DISDataset(
-        train=False, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
+    TEST_DATASET = S3DISDatasetLarge(
+        train=False, num_pointclouds=30, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
     print("Test Dataset Loaded")
     # Feed datasets to dataloader
     train_loader = Data.DataLoader(
@@ -109,8 +110,12 @@ def main(args):
         model = PointNetPPEncoder(is_color=False, is_normal=False).to(device)
     elif args.model == "punet":
         # Load PU-Net for point upsampling
-        model = PUnet(is_color=args.is_color,
+        model = PUnet(npoint=args.npoint, is_color=args.is_color,
                       is_normal=args.is_normal).to(device)
+    elif args.model == "punet_useres":
+        # Load PU-Net for point upsampling
+        model = PUnetRES(npoint=args.npoint, is_color=args.is_color,
+                         is_normal=args.is_normal).to(device)
     else:
         # Load PointNet Encoder Model for feature extraction
         model = PointNetEncoder(in_channels=6).to(device)
@@ -132,9 +137,9 @@ def main(args):
             optimizer.zero_grad()
             points = points.float().to(device)
             labels = labels.float().to(device)
+
             points = points.transpose(2, 1)  # B x C x N
 
-            # Get features for each point cloud at each set abstraction layer
             gp = model(points)  # B x rN x C
 
             emd_loss, rep_loss = criterion(gp, labels, torch.Tensor(1))
@@ -150,7 +155,7 @@ def main(args):
 
         print(f"epoch: {epoch}, loss: {np.mean(loss_list)}")
 
-        if epoch % 5 == 0:
+        if epoch % 1 == 0:
             print("Saving Model....")
             savepath = os.path.join(
                 WRITE_DIR, args.model + counter, "instant", f"{args.model}_epoch_{epoch}.pth")

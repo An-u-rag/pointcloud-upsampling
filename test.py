@@ -1,7 +1,7 @@
 import argparse
 import os
 from data_utils.RandomDataLoader import RandomDataset
-from data_utils.S3DISDataLoader import S3DISDataset
+from data_utils.S3DISDataLoader import S3DISDataset, S3DISDatasetObjectTest
 from models.pointnetpp import PointNetPPEncoder
 from models.pointnet import PointNetEncoder
 from models.punet import PUnet, UpsampleLoss
@@ -23,7 +23,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
 VISUAL_DIR = os.path.join("out", "test")
-counter = "1"
+counter = "_objects"
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
@@ -35,7 +35,7 @@ def parse_args():
                         help='model name [default: punet]')
     parser.add_argument('--epochs', type=str, default="[0, 65, 95]",
                         help='epochs to test [default: [0, 65, 95]]')
-    parser.add_argument('--batchsize', default=8, type=int,
+    parser.add_argument('--batchsize', default=1, type=int,
                         help='Batch size for num pointclouds processed per batch')
     parser.add_argument('--npoint', type=int, default=1024,
                         help='Number of points in Input Point Cloud [default: 1024]')
@@ -105,8 +105,8 @@ def main(args):
     if args.is_normal:
         CHANNELS += 3
 
-    TEST_DATASET = S3DISDataset(
-        train=False, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
+    TEST_DATASET = S3DISDatasetObjectTest(
+        num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
     print("Test Dataset Loaded")
 
     # Feed datasets to dataloader
