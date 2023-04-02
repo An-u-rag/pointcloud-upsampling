@@ -1,4 +1,7 @@
-data/*
-pretrained_models/*
-pytorch3d/*
-keops/*
+data/
+pretrained_models/
+pytorch3d/
+keops/
+out/
+checkpoints/
+*__pycache__*
