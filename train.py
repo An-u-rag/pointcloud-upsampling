@@ -1,11 +1,9 @@
 import argparse
 import os
-from data_utils.RandomDataLoader import RandomDataset
 from data_utils.S3DISDataLoader import S3DISDataset, S3DISDatasetLarge
 from models.pointnetpp import PointNetPPEncoder
 from models.pointnet import PointNetEncoder
 from models.punet import PUnet, UpsampleLoss
-from models.punet_inputres import PUnetRES
 import torch
 import torch.utils.data as Data
 import torch.nn as nn
@@ -34,9 +32,9 @@ def parse_args():
                         help='model name [default: punet]')
     parser.add_argument('--epochs', default=32, type=int,
                         help='Epochs to run [default: 32]')
-    parser.add_argument('--batchsize', default=1, type=int,
+    parser.add_argument('--batchsize', default=8, type=int,
                         help='Batch size for num pointclouds processed per batch')
-    parser.add_argument('--npoint', type=int, default=8192,
+    parser.add_argument('--npoint', type=int, default=1024,
                         help='Number of points in Input Point Cloud [default: 1024]')
     parser.add_argument('--upsample_rate', type=int, default=4,
                         help='Rate to upsample at [default: 4]')
@@ -92,12 +90,13 @@ def main(args):
         CHANNELS += 3
     if args.is_normal:
         CHANNELS += 3
-    TRAIN_DATASET = S3DISDatasetLarge(
-        train=True, num_pointclouds=30, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
+    TRAIN_DATASET = S3DISDataset(
+        train=True, num_point=args.npoint, upsample_factor=4, test_area=5, is_color=False)
     print("Train Dataset loaded")
-    TEST_DATASET = S3DISDatasetLarge(
-        train=False, num_pointclouds=30, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
+    TEST_DATASET = S3DISDataset(
+        train=False, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
     print("Test Dataset Loaded")
+
     # Feed datasets to dataloader
     train_loader = Data.DataLoader(
         dataset=TRAIN_DATASET, batch_size=BATCHSIZE, num_workers=4, shuffle=True, drop_last=True)
@@ -112,10 +111,6 @@ def main(args):
         # Load PU-Net for point upsampling
         model = PUnet(npoint=args.npoint, is_color=args.is_color,
                       is_normal=args.is_normal).to(device)
-    elif args.model == "punet_useres":
-        # Load PU-Net for point upsampling
-        model = PUnetRES(npoint=args.npoint, is_color=args.is_color,
-                         is_normal=args.is_normal).to(device)
     else:
         # Load PointNet Encoder Model for feature extraction
         model = PointNetEncoder(in_channels=6).to(device)
@@ -129,20 +124,24 @@ def main(args):
     for epoch in range(args.epochs):
         print(f"Starting Epoch {epoch}:")
         start = time.time()
-        loss_list = []
-        gp_list = []
-        labels_list = []
+        loss_list = []  # Track of losses of epochs
+        gp_list = []  # Track of all the predicted pointclouds
+        labels_list = []  # Track of ground truth point clouds
         model.train()
         for step, (points, labels) in tqdm(enumerate(train_loader), total=len(train_loader)):
             optimizer.zero_grad()
-            points = points.float().to(device)
-            labels = labels.float().to(device)
+
+            points = points.type(torch.float32).to(
+                device)  # B x N x C (eg: N = 1024)
+            labels = labels.type(torch.float32).to(
+                device)  # B x N' x C (eg: N' = 4096)
 
             points = points.transpose(2, 1)  # B x C x N
 
-            gp = model(points)  # B x rN x C
+            gp = model(points)  # B x rN x C == B x N' x C (eg: N' = rN = 4096)
 
             emd_loss, rep_loss = criterion(gp, labels, torch.Tensor(1))
+
             loss = emd_loss + rep_loss
 
             loss.backward()
@@ -155,7 +154,7 @@ def main(args):
 
         print(f"epoch: {epoch}, loss: {np.mean(loss_list)}")
 
-        if epoch % 1 == 0:
+        if epoch % 5 == 0:
             print("Saving Model....")
             savepath = os.path.join(
                 WRITE_DIR, args.model + counter, "instant", f"{args.model}_epoch_{epoch}.pth")
@@ -196,8 +195,8 @@ def main(args):
             model.eval()
             eval_loss_list = []
             for step, (points, labels) in tqdm(enumerate(test_loader), total=len(test_loader)):
-                points = points.float().to(device)
-                labels = labels.float().to(device)
+                points = points.type(torch.float32).to(device)
+                labels = labels.type(torch.float32).to(device)
                 points = points.transpose(2, 1)  # B x C x N
 
                 gp = model(points)

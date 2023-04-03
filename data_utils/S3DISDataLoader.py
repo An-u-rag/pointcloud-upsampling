@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import proj3d
 
 DATA_DIR = "data/pointclouds/s3dis_npy"
-OBJECT_TEST_DIR = "../data/pointclouds/s3dis_object_tests"
+OBJECT_TEST_DIR = "data/pointclouds/s3dis_object_tests"
 
 
 class S3DISDataset(Dataset):
@@ -52,16 +52,6 @@ class S3DISDataset(Dataset):
             pointclouds.append(points)
 
         print(f"Extracted in {time.time() - start}")
-
-        # Sample patch (num_point * upsample_factor) from each point cloud
-        # For now lets just randomly sample using uniform dist. (realistically we have to use furthest point sample or grid sampling)
-        # for i, pc in enumerate(pointclouds):
-        #     sample_idx = np.random.choice(
-        #         len(pc), self.num_point * self.upsample_factor, replace=False)
-        #     pointclouds[i] = pc[sample_idx]
-
-        # # Now each point cloud has numpoint * upsample_factor number of points
-        # self.pointclouds = np.array(pointclouds)
 
         # Sample patch (num_point * upsample_factor) from each point cloud
         patches = []
@@ -114,7 +104,7 @@ class S3DISDataset(Dataset):
         label = self.pointclouds[i]  # 4096 x C
         input_idx = np.random.choice(
             self.num_point * self.upsample_factor, self.num_point, replace=False)
-        input = label[input_idx]
+        input = label[input_idx]  # 1024 x C
         return input, label
 
     def __len__(self):
@@ -186,12 +176,12 @@ class S3DISDatasetObjectTest(Dataset):
         print(
             "////////////////////Working on Object Patch Normalization////////////////////")
         for i, pc in tqdm(enumerate(self.pointclouds), total=len(self.pointclouds)):
-            self.pointclouds[i, :, 0] = np.uint8((
-                pc[:, 0] - np.amin(pc[:, 0])) / (np.amax(pc[:, 0]) - np.amin(pc[:, 0])) * 255)
-            self.pointclouds[i, :, 1] = np.uint8((
-                pc[:, 1] - np.amin(pc[:, 1])) / (np.amax(pc[:, 1]) - np.amin(pc[:, 1])) * 255)
-            self.pointclouds[i, :, 2] = np.uint8((
-                pc[:, 2] - np.amin(pc[:, 2])) / (np.amax(pc[:, 2]) - np.amin(pc[:, 2])) * 255)
+            self.pointclouds[i, :, 0] = (
+                pc[:, 0] - np.amin(pc[:, 0])) / (np.amax(pc[:, 0]) - np.amin(pc[:, 0]))
+            self.pointclouds[i, :, 1] = (
+                pc[:, 1] - np.amin(pc[:, 1])) / (np.amax(pc[:, 1]) - np.amin(pc[:, 1]))
+            self.pointclouds[i, :, 2] = (
+                pc[:, 2] - np.amin(pc[:, 2])) / (np.amax(pc[:, 2]) - np.amin(pc[:, 2]))
 
         # Now that we have normalized x, y, z coordinates, we can store it and call it in getitem
         print("min: ", np.amin(self.pointclouds[0], axis=0))
@@ -221,13 +211,6 @@ class S3DISDatasetObjectTest(Dataset):
             self.num_point * self.upsample_factor, self.num_point, replace=False)
         input = label[input_idx]
         self.visualize(input.reshape(-1, input.shape[0], input.shape[1]))
-
-        label = torch.as_tensor(label, dtype=torch.uint8).cuda()
-        input = torch.as_tensor(input, dtype=torch.uint8).cuda()
-        print("Get label size: ", label.dtype,
-              label.element_size() * label.nelement())
-        print("Get input size: ", input.dtype,
-              input.element_size() * input.nelement())
 
         return input, label
 
@@ -280,16 +263,6 @@ class S3DISDatasetLarge(Dataset):
         print(f"Extracted in {time.time() - start}")
 
         # Sample patch (num_point * upsample_factor) from each point cloud
-        # For now lets just randomly sample using uniform dist. (realistically we have to use furthest point sample or grid sampling)
-        # for i, pc in enumerate(pointclouds):
-        #     sample_idx = np.random.choice(
-        #         len(pc), self.num_point * self.upsample_factor, replace=False)
-        #     pointclouds[i] = pc[sample_idx]
-
-        # # Now each point cloud has numpoint * upsample_factor number of points
-        # self.pointclouds = np.array(pointclouds)
-
-        # Sample patch (num_point * upsample_factor) from each point cloud
         patches = []
         print(
             f"////////////////////Extracting {self.M} Patches from each Point Cloud////////////////////")
@@ -312,12 +285,12 @@ class S3DISDatasetLarge(Dataset):
 
         print("////////////////////Working on Patch Normalization////////////////////")
         for i, pc in tqdm(enumerate(self.pointclouds), total=len(self.pointclouds)):
-            self.pointclouds[i, :, 0] = np.uint8((
-                pc[:, 0] - np.amin(pc[:, 0])) / (np.amax(pc[:, 0]) - np.amin(pc[:, 0])) * 255)
-            self.pointclouds[i, :, 1] = np.uint8((
-                pc[:, 1] - np.amin(pc[:, 1])) / (np.amax(pc[:, 1]) - np.amin(pc[:, 1])) * 255)
-            self.pointclouds[i, :, 2] = np.uint8((
-                pc[:, 2] - np.amin(pc[:, 2])) / (np.amax(pc[:, 2]) - np.amin(pc[:, 2])) * 255)
+            self.pointclouds[i, :, 0] = (
+                pc[:, 0] - np.amin(pc[:, 0])) / (np.amax(pc[:, 0]) - np.amin(pc[:, 0]))
+            self.pointclouds[i, :, 1] = (
+                pc[:, 1] - np.amin(pc[:, 1])) / (np.amax(pc[:, 1]) - np.amin(pc[:, 1]))
+            self.pointclouds[i, :, 2] = (
+                pc[:, 2] - np.amin(pc[:, 2])) / (np.amax(pc[:, 2]) - np.amin(pc[:, 2]))
 
         # Now that we have normalized x, y, z coordinates, we can store it and call it in getitem
 
@@ -341,9 +314,6 @@ class S3DISDatasetLarge(Dataset):
         input_idx = np.random.choice(
             self.num_point * self.upsample_factor, self.num_point, replace=False)
         input = label[input_idx]
-
-        label = torch.as_tensor(label, dtype=torch.float32).cuda()
-        input = torch.as_tensor(input, dtype=torch.float32).cuda()
 
         return input, label
 

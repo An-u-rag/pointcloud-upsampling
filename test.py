@@ -58,13 +58,14 @@ def visualize(input_data, pred_data, ground_truth_data, model="punet", epoch=0):
 
     # Pick first 5 point clouds to show
     # Iterate through point clouds and display/save as image
-    fig, axs = plt.subplots(3, 5, figsize=(
-        80, 80), dpi=100, layout="tight", subplot_kw=dict(projection='3d', xticks=[], yticks=[]))
+    fig, axs = plt.subplots(3, 1, figsize=(
+        16, 16), dpi=100, layout="tight", subplot_kw=dict(projection='3d', xticks=[], yticks=[]))
     fig.suptitle(
-        'Upsampled Point Clouds (row 1 -> Input, row 2 -> Predictions, row 3 -> Ground Truth)', fontsize=100)
+        'Upsampled Point Clouds (row 1 -> Input, row 2 -> Predictions, row 3 -> Ground Truth)', fontsize=10)
 
     indices = [0, pred_data.shape[0]//6, pred_data.shape[0] //
                4, pred_data.shape[0]//2, pred_data.shape[0]-1]
+    indices = [0]
     c = 0
     for i in indices:
         x_i = input_data[i, :, 0]
@@ -77,12 +78,12 @@ def visualize(input_data, pred_data, ground_truth_data, model="punet", epoch=0):
         y_g = ground_truth_data[i, :, 1]
         z_g = ground_truth_data[i, :, 2]
 
-        sc0 = axs[0, c].scatter(x_i, y_i, z_i)
-        axs[0, c].set_title(f"InputPointCloud-{i+1}", fontsize=80)
-        sc1 = axs[1, c].scatter(x_p, y_p, z_p)
-        axs[1, c].set_title(f"GenPointCloud-{i+1}", fontsize=80)
-        sc2 = axs[2, c].scatter(x_g, y_g, z_g)
-        axs[2, c].set_title(f"GTPointCloud-{i+1}", fontsize=80)
+        sc0 = axs[0].scatter(x_i, y_i, z_i)
+        axs[0].set_title(f"InputPointCloud-{i+1}", fontsize=8)
+        sc1 = axs[1].scatter(x_p, y_p, z_p)
+        axs[1].set_title(f"GenPointCloud-{i+1}", fontsize=8)
+        sc2 = axs[2].scatter(x_g, y_g, z_g)
+        axs[2].set_title(f"GTPointCloud-{i+1}", fontsize=8)
         c += 1
 
     savepath = os.path.join(VISUAL_DIR, model + counter, "visuals")
@@ -91,7 +92,9 @@ def visualize(input_data, pred_data, ground_truth_data, model="punet", epoch=0):
         os.makedirs(savepath)
 
     plt.savefig(os.path.join(
-        savepath, f"visual_inference_{epoch}"))
+        savepath, f"visual_inference_lowres_{epoch}"))
+
+    plt.show()
 
 
 def main(args):
@@ -167,7 +170,7 @@ def main(args):
             f"Inference loss: {np.mean(eval_loss_list)}")
 
         print(
-            f"--- Epoch Done in {time.time() - start}. Proceeding to next epoch ---")
+            f"--- Inference Done in {time.time() - start}")
 
         print("-------------Done-------------")
 

@@ -26,9 +26,10 @@ def square_distance(src, dst):
     # dist = -2 * torch.matmul(src, dst.permute(0, 2, 1))
     # dist += torch.sum(src ** 2, -1).view(B, N, 1)
     # dist += torch.sum(dst ** 2, -1).view(B, 1, M)
-    diff = src.unsqueeze(2).expand(B, N, M, C) - \
-        dst.unsqueeze(1).expand(B, N, M, C)
-    dist = torch.sum(diff ** 2, -1)
+    # diff = src.unsqueeze(2).expand(B, N, M, C) - \
+    #     dst.unsqueeze(1).expand(B, N, M, C)
+    # dist = torch.sum(diff ** 2, -1)
+    dist = torch.cdist(src, dst, p=2.0)
     return dist
 
 
@@ -77,7 +78,7 @@ def farthest_point_sample(xyz, npoint):
         centroid = xyz[batch_indices, farthest, :].view(B, 1, 3)
         dist = torch.sum((xyz - centroid) ** 2, -1)
         mask = dist < distance
-        distance[mask] = dist[mask]
+        distance[mask] = dist[mask].type(distance.dtype)
         farthest = torch.max(distance, -1)[1]
     return centroids
 

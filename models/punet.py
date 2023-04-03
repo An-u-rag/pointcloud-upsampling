@@ -20,7 +20,7 @@ from pytorch3d.loss import chamfer
 # import pyemd
 
 
-def knn(pc, n_neighbors=32):
+def knn(pc, n_neighbors=32):  # K nearest neighbors
     dist = torch.cdist(pc, pc)
     neigbhors = dist.topk(k=n_neighbors, dim=2, largest=False)
     return neigbhors.indices
@@ -44,7 +44,7 @@ class PUnet(nn.Module):
     def __init__(self, npoint=1024, nlayers=4, radii=[0.05, 0.1, 0.2, 0.3], nsamples=[32, 32, 32, 32], is_color=True, is_normal=False):
         super(PUnet, self).__init__()
         self.nlayers = nlayers
-        self.mlplists = [
+        self.mlplists = [  # For pointnet++ downsampling
             [32, 32, 64],
             [64, 64, 128],
             [128, 128, 256],
