@@ -106,7 +106,7 @@ class PUnet(nn.Module):
 
 # PUNet Loss Function
 class UpsampleLoss(nn.Module):
-    def __init__(self, alpha=1.0, nn_size=5, radius=0.07, h=0.03, eps=1e-12):
+    def __init__(self, alpha=10.0, nn_size=5, radius=0.07, h=0.03, eps=1e-12):
         super().__init__()
         self.alpha = alpha
         self.nn_size = nn_size
