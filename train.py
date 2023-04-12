@@ -22,7 +22,7 @@ ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
 WRITE_DIR = "checkpoints"
 VISUAL_DIR = os.path.join("out", "train")
-counter = "_object_concatres_higher_repulsion"
+counter = "_object_concatres_magneticloss_knnscaling_reverseDecay_lessrepulsion_gammabecomesalpha"
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
@@ -121,7 +121,15 @@ def main(args):
     optimizer = torch.optim.Adam(
         model.parameters(), lr=0.001, betas=(0.9, 0.999))
 
+    # check = torch.load(
+    #     "checkpoints/punet_object_concatres_higher_repulsion/punet_epoch_42.pth")
+    # model.load_state_dict(check['model_state_dict'])
+    # optimizer.load_state_dict(check['optimizer_state_dict'])
+    # epoch_load = check['epoch']
+
+    knn_scale = 25
     for epoch in range(args.epochs):
+        # epoch = epoch + epoch_load
         print(f"Starting Epoch {epoch}:")
         start = time.time()
         loss_list = []  # Track of losses of epochs
@@ -142,15 +150,23 @@ def main(args):
                 2, 1)  # B x C x N
 
             # B x rM x C (eg: rM = 3072)
-            gp = model(downsampled_points)
+            gp_first = model(downsampled_points)
 
             # Concat the predicted point cloud with initial input point cloud in points dimension for geometric struture preservation
             # B x N x C (eg: N = rM + N' = 4096)
-            gp = torch.cat((points, gp), dim=1)
+            gp = torch.cat((points, gp_first), dim=1)
 
-            emd_loss, rep_loss = criterion(gp, labels, torch.Tensor(1))
+            magnetic_loss, cd_loss, rep_loss = criterion(
+                int(knn_scale * ((100 - epoch+1) / 100)), points, gp_first, gp, labels, torch.Tensor(1))
 
-            loss = emd_loss + rep_loss
+            print("magnetic loss: ", magnetic_loss)
+
+            factor = (epoch+1) / args.epochs
+            alpha = 5.0 * (1/factor)  # Start high and decay
+            beta = 100.0
+            gamma = 5.0 * factor  # Start low and increase
+            loss = (gamma * magnetic_loss) + \
+                (beta * cd_loss) + (alpha * rep_loss)
 
             loss.backward()
             optimizer.step()
@@ -214,11 +230,14 @@ def main(args):
                     2, 1)  # B x C x N
 
                 # B x rM x C (eg: rM = 3072)
-                gp = model(downsampled_points)
+                gp_first = model(downsampled_points)
 
                 gp = torch.cat((points, gp), dim=1)
-                emd_loss, rep_loss = criterion(gp, labels, torch.Tensor(1))
-                loss = emd_loss + rep_loss
+                magnetic_loss, emd_loss, rep_loss = criterion(
+                    int(knn_scale * ((100 - epoch+1) / 100)), points, gp_first, gp, labels, torch.Tensor(1))
+
+                print("magnetic loss: ", magnetic_loss)
+                loss = magnetic_loss + emd_loss + rep_loss
 
                 eval_loss_list.append(loss.item())
 

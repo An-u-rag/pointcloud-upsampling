@@ -190,7 +190,6 @@ class S3DISObjectDataset(Dataset):
             sum_y = np.sum(pc[:, 1])
             sum_z = np.sum(pc[:, 2])
             centroid = np.array([sum_x/length, sum_y/length, sum_z/length])
-            print("centroid: ", centroid)
             self.pointclouds[i] = pc - centroid
 
         print(f"Point clouds patch extraction done: {self.pointclouds.shape}")
@@ -279,8 +278,6 @@ class S3DISDatasetObjectTest(Dataset):
         print("min: ", np.amin(self.pointclouds[0], axis=0))
         print("max: ", np.amax(self.pointclouds[0], axis=0))
 
-        self.visualize(self.pointclouds)
-
         # Centroid Normalization
         for i in range(len(self.pointclouds)):
             pc = self.pointclouds[i]
@@ -294,8 +291,6 @@ class S3DISDatasetObjectTest(Dataset):
 
         print("min: ", np.amin(self.pointclouds[0], axis=0))
         print("max: ", np.amax(self.pointclouds[0], axis=0))
-
-        self.visualize(self.pointclouds)
 
         # Now Normalize the coordinates with their respective min and max values
         # TO Normalize we need to find max and min coordinates of each point cloud
@@ -333,13 +328,19 @@ class S3DISDatasetObjectTest(Dataset):
         # The upsampling factor is r=4
         # Therefore out input will be downscaled to 4096/4 = 1024 and label with the entire pointcloud
 
-        label = self.pointclouds[i]  # 4096 x C
-        input_idx = np.random.choice(
-            self.num_point * self.upsample_factor, self.num_point, replace=False)
-        input = label[input_idx]
-        self.visualize(input.reshape(-1, input.shape[0], input.shape[1]))
+        r = self.upsample_factor
+        N_prime = self.num_point
+        N = N_prime * r
+        M = (N - N_prime) // r
 
-        return input, label
+        label = self.pointclouds[i]  # 4096 x C => N x r
+        input_idx = np.random.choice(N_prime * r, N_prime, replace=False)
+        input = label[input_idx]  # 1024 x C
+        # self.visualize(input.reshape(-1, input.shape[0], input.shape[1]))
+        downsampled_input_idx = np.random.choice(N_prime, M, replace=False)
+        downsampled_input = input[downsampled_input_idx]
+
+        return input, downsampled_input, label
 
     def __len__(self):
         return len(self.pointclouds)
