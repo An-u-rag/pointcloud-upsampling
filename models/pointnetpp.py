@@ -12,8 +12,6 @@ import torchvision.utils as vutils
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-from models.pointnet import PointNetEncoder, TNet
-
 from models.utils_samplers import *
 
 
@@ -183,26 +181,28 @@ class PointNetPPEncoder(nn.Module):
 
         # Now we have multi scale features at every layer of point cloud abstraction
         # We can basically do anything with these learned features
+        # print([l_point.size() for l_point in l_points])
         return l_xyz, l_points
 
 
 # Feature Aggregation using Feature Propagation layers of PointNet++
 # The Nl x Cl feature tensors need to be interpolated to a single NxC tensor for feature expansion
 class PointNetPPDecoder(nn.Module):
-    def __init__(self, mlplists):
+    def __init__(self, mlplists, use_res=False):
         super(PointNetPPDecoder, self).__init__()
         self.mlplists = mlplists
         self.fp_mlps = nn.ModuleList()
+        self.use_res = use_res
 
         for i in range(len(self.mlplists) - 1):
             self.fp_mlps.append(PointNetFeaturePropagation(
-                self.mlplists[i+1][-1], [64]))
+                self.mlplists[i+1][-1] + (3 if use_res else 0), [64]))
 
     def forward(self, l_xyz, l_points):
         up_feats = []
         for k in range(len(self.fp_mlps)):
             cur_upfeats = self.fp_mlps[k](
-                l_xyz[0], l_xyz[k+2], None, l_points[k+2])
+                l_xyz[0], l_xyz[k+2], l_points[0] if self.use_res else None, l_points[k+2])
             up_feats.append(cur_upfeats.squeeze(-1))
 
         return up_feats

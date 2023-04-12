@@ -20,8 +20,14 @@ from pytorch3d.loss import chamfer
 # import pyemd
 
 
-def knn(pc, n_neighbors=32):
+def knn(pc, n_neighbors=32):  # K nearest neighbors
     dist = torch.cdist(pc, pc)
+    neigbhors = dist.topk(k=n_neighbors, dim=2, largest=False)
+    return neigbhors.indices
+
+
+def knn_p(point, pc, n_neighbors=32):  # K nearest neighbors between different point clouds
+    dist = torch.cdist(point, pc)
     neigbhors = dist.topk(k=n_neighbors, dim=2, largest=False)
     return neigbhors.indices
 
@@ -44,7 +50,7 @@ class PUnet(nn.Module):
     def __init__(self, npoint=1024, nlayers=4, radii=[0.05, 0.1, 0.2, 0.3], nsamples=[32, 32, 32, 32], is_color=True, is_normal=False):
         super(PUnet, self).__init__()
         self.nlayers = nlayers
-        self.mlplists = [
+        self.mlplists = [  # For pointnet++ downsampling
             [32, 32, 64],
             [64, 64, 128],
             [128, 128, 256],
@@ -106,7 +112,8 @@ class PUnet(nn.Module):
 
 # PUNet Loss Function
 class UpsampleLoss(nn.Module):
-    def __init__(self, alpha=1.0, nn_size=5, radius=0.07, h=0.03, eps=1e-12):
+    # Base is a = 10. and radius = 0.07 and h = 0.03 and eps=1e-12
+    def __init__(self, alpha=10.0, nn_size=7, radius=0.07, h=0.03, eps=1e-12):
         super().__init__()
         self.alpha = alpha
         self.nn_size = nn_size
@@ -126,6 +133,26 @@ class UpsampleLoss(nn.Module):
     def get_cd_loss(self, gp, gtp, pcd_radius):
         cd_loss, _ = chamfer.chamfer_distance(gp, gtp)
         return cd_loss
+
+    def get_magnetic_loss(self, input, gp, nn=6):
+        # B x 3072 x 3 , B x 1024 x 3 = B x 3072 x nn
+        idx = knn_p(gp, input, nn)
+        idx = idx.contiguous()
+
+        input = input.contiguous()
+        closest_input_points = index_points(input, idx)  # B x 3072 x nn x 3
+
+        gp = gp.transpose(1, 2)
+        closest_input_points = closest_input_points.permute(
+            0, 3, 1, 2)  # B x C x 3072 x nn
+        closest_input_points = closest_input_points - gp.unsqueeze(-1)
+        dist2 = torch.sum(closest_input_points ** 2, dim=1)
+        dist2 = torch.max(dist2, torch.tensor(
+            self.eps).to(closest_input_points.device))
+        dist = torch.sqrt(dist2)
+
+        magnetic_loss = torch.mean(dist)
+        return magnetic_loss
 
     def get_repulsion_loss(self, pred):
         # Get K nearest neighbors' indices of each point
@@ -150,9 +177,9 @@ class UpsampleLoss(nn.Module):
         # uniform_loss = torch.mean(self.radius - dist * weight) # punet
         return uniform_loss
 
-    def forward(self, pred, gt, pcd_radius):
-        return self.get_cd_loss(pred, gt, pcd_radius) * 100, \
-            self.alpha * self.get_repulsion_loss(pred)
+    # input -> B x 1024 x 3, pred_first -> B x 3072 x 3, pred -> B x 4096 x 3, label -> B x 4096 x 3
+    def forward(self, nn, input, pred_first, pred, gt, pcd_radius):
+        return self.get_magnetic_loss(input, pred_first, nn), self.get_cd_loss(pred, gt, pcd_radius), self.get_repulsion_loss(pred)
         # return self.get_emd_loss(pred, gt, pcd_radius) * 100, \
         #     self.alpha * self.get_repulsion_loss(pred)
 
