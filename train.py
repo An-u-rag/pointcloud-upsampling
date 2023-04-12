@@ -1,7 +1,6 @@
 import argparse
 import os
-from data_utils.RandomDataLoader import RandomDataset
-from data_utils.S3DISDataLoader import S3DISDataset
+from data_utils.S3DISDataLoader import S3DISDataset, S3DISDatasetLarge, S3DISObjectDataset
 from models.pointnetpp import PointNetPPEncoder
 from models.pointnet import PointNetEncoder
 from models.punet import PUnet, UpsampleLoss
@@ -14,10 +13,16 @@ import sys
 from tqdm import tqdm
 import numpy as np
 import time
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import proj3d
+from matplotlib import cm
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
+WRITE_DIR = "checkpoints"
+VISUAL_DIR = os.path.join("out", "train")
+counter = "_object_concatres_magneticloss_knnscaling_reverseDecay_lessrepulsion_gammabecomesalpha"
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
@@ -41,6 +46,38 @@ def parse_args():
     return parser.parse_args()
 
 
+def visualize(pred_data, ground_truth_data, model="punet", epoch=0):  # step x batch x n x 3
+    pred_data = pred_data.reshape(-1, pred_data.shape[-2], pred_data.shape[-1])
+    ground_truth_data = ground_truth_data.reshape(
+        -1, ground_truth_data.shape[-2], ground_truth_data.shape[-1])  # (step * batch) x n x 3
+
+    # Pick first 5 point clouds to show
+    # Iterate through point clouds and display/save as image
+    fig, axs = plt.subplots(2, 5, figsize=(
+        80, 80), dpi=100, layout="tight", subplot_kw=dict(projection='3d', xticks=[], yticks=[]))
+    fig.suptitle(
+        'Upsampled Point Clouds (row 1 -> Predictions, row 2 -> Ground Truth)', fontsize=120)
+    for i in range(5):
+        x_p = pred_data[i, :, 0]
+        y_p = pred_data[i, :, 1]
+        z_p = pred_data[i, :, 2]
+        x_g = ground_truth_data[i, :, 0]
+        y_g = ground_truth_data[i, :, 1]
+        z_g = ground_truth_data[i, :, 2]
+
+        sc1 = axs[0, i].scatter(x_p, y_p, z_p)
+        axs[0, i].set_title(f"PointCloud-{i+1}", fontsize=100)
+        sc2 = axs[1, i].scatter(x_g, y_g, z_g)
+        axs[1, i].set_title(f"PointCloud-{i+1}", fontsize=100)
+
+    savepath = os.path.join(VISUAL_DIR, model + counter, "visuals")
+
+    if not os.path.exists(savepath):
+        os.makedirs(savepath)
+
+    plt.savefig(os.path.join(savepath, f"visual_epoch{epoch}"))
+
+
 def main(args):
     print(device)
     # train dataset and train loader
@@ -53,17 +90,18 @@ def main(args):
         CHANNELS += 3
     if args.is_normal:
         CHANNELS += 3
-    TRAIN_DATASET = S3DISDataset(
-        train=True, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
+    TRAIN_DATASET = S3DISObjectDataset(
+        train=True, num_point=args.npoint, upsample_factor=args.upsample_rate, test_area=5, is_color=False)
     print("Train Dataset loaded")
-    TEST_DATASET = S3DISDataset(
-        train=False, num_point=args.npoint, upsample_factor=args.upsample_rate, is_color=False)
+    TEST_DATASET = S3DISObjectDataset(
+        train=False, num_point=args.npoint, upsample_factor=args.upsample_rate, test_area=5, is_color=False)
     print("Test Dataset Loaded")
+
     # Feed datasets to dataloader
     train_loader = Data.DataLoader(
-        dataset=TRAIN_DATASET, batch_size=BATCHSIZE, num_workers=4, shuffle=True)
+        dataset=TRAIN_DATASET, batch_size=BATCHSIZE, num_workers=4, shuffle=True, drop_last=True)
     test_loader = Data.DataLoader(
-        dataset=TEST_DATASET, batch_size=BATCHSIZE, num_workers=4, shuffle=False)
+        dataset=TEST_DATASET, batch_size=BATCHSIZE, num_workers=4, shuffle=False, drop_last=True)
 
     # Load Model
     if args.model == "pointnetpp" or args.model == "pointnet++":
@@ -71,53 +109,135 @@ def main(args):
         model = PointNetPPEncoder(is_color=False, is_normal=False).to(device)
     elif args.model == "punet":
         # Load PU-Net for point upsampling
-        model = PUnet(is_color=args.is_color,
+        model = PUnet(npoint=args.npoint - (args.npoint//args.upsample_rate), is_color=args.is_color,
                       is_normal=args.is_normal).to(device)
     else:
         # Load PointNet Encoder Model for feature extraction
         model = PointNetEncoder(in_channels=6).to(device)
 
-    # Loss function - None as of now but once we add a downstream model, this will be populated
+    # Loss function
     criterion = UpsampleLoss()
     # Optimizer
     optimizer = torch.optim.Adam(
         model.parameters(), lr=0.001, betas=(0.9, 0.999))
 
+    # check = torch.load(
+    #     "checkpoints/punet_object_concatres_higher_repulsion/punet_epoch_42.pth")
+    # model.load_state_dict(check['model_state_dict'])
+    # optimizer.load_state_dict(check['optimizer_state_dict'])
+    # epoch_load = check['epoch']
+
+    knn_scale = 25
     for epoch in range(args.epochs):
+        # epoch = epoch + epoch_load
         print(f"Starting Epoch {epoch}:")
         start = time.time()
-        loss_list = []
+        loss_list = []  # Track of losses of epochs
+        gp_list = []  # Track of all the predicted pointclouds
+        labels_list = []  # Track of ground truth point clouds
         model.train()
-        for step, (points, labels) in tqdm(enumerate(train_loader), total=len(train_loader)):
+        for step, (points, downsampled_points, labels) in tqdm(enumerate(train_loader), total=len(train_loader)):
             optimizer.zero_grad()
-            points = points.float().to(device)
-            labels = labels.float().to(device)
-            points = points.transpose(2, 1)  # B x C x N
 
-            # Get features for each point cloud at each set abstraction layer
-            gp = model(points)  # B x rN x C
-            emd_loss, rep_loss = criterion(gp, labels, torch.Tensor(1))
-            loss = emd_loss + rep_loss
+            points = points.type(torch.float32).to(
+                device)  # B x N' x C (eg: N = 1024)
+            downsampled_points = downsampled_points.type(
+                torch.float32).to(device)  # B x M x C (eg: M = 768)
+            labels = labels.type(torch.float32).to(
+                device)  # B x N x C (eg: N' = 4096)
+
+            downsampled_points = downsampled_points.transpose(
+                2, 1)  # B x C x N
+
+            # B x rM x C (eg: rM = 3072)
+            gp_first = model(downsampled_points)
+
+            # Concat the predicted point cloud with initial input point cloud in points dimension for geometric struture preservation
+            # B x N x C (eg: N = rM + N' = 4096)
+            gp = torch.cat((points, gp_first), dim=1)
+
+            magnetic_loss, cd_loss, rep_loss = criterion(
+                int(knn_scale * ((100 - epoch+1) / 100)), points, gp_first, gp, labels, torch.Tensor(1))
+
+            print("magnetic loss: ", magnetic_loss)
+
+            factor = (epoch+1) / args.epochs
+            alpha = 5.0 * (1/factor)  # Start high and decay
+            beta = 100.0
+            gamma = 5.0 * factor  # Start low and increase
+            loss = (gamma * magnetic_loss) + \
+                (beta * cd_loss) + (alpha * rep_loss)
 
             loss.backward()
             optimizer.step()
 
             loss_list.append(loss.item())
+            gp_list.append(gp.cpu().detach().numpy())  # steps x B x rN x C
+            labels_list.append(labels.cpu().detach().numpy()
+                               )  # steps x B x rN x C
 
         print(f"epoch: {epoch}, loss: {np.mean(loss_list)}")
+
+        if epoch % 1 == 0:
+            print("Saving Model....")
+            savepath = os.path.join(
+                WRITE_DIR, args.model + counter, "instant", f"{args.model}_epoch_{epoch}.pth")
+            savepath_for_train = os.path.join(
+                WRITE_DIR, args.model + counter, f"{args.model}_epoch_{epoch}.pth")
+            if not os.path.exists(os.path.join(WRITE_DIR, args.model + counter, "instant")):
+                os.makedirs(os.path.join(
+                    WRITE_DIR, args.model + counter, "instant"))
+            torch.save(model.state_dict(), savepath)
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': np.mean(loss_list),
+            }, savepath_for_train)
+
+            print("Saving predicted point clouds and ground truth point clouds")
+            gp_savepath = os.path.join(
+                VISUAL_DIR, args.model + counter, "preds")
+            gt_savepath = os.path.join(
+                VISUAL_DIR, args.model + counter, "ground_truths")
+            if not os.path.exists(gp_savepath):
+                os.makedirs(gp_savepath)
+            if not os.path.exists(gt_savepath):
+                os.makedirs(gt_savepath)
+            np.save(os.path.join(gp_savepath,
+                    f"epoch{epoch}"), np.array(gp_list))
+            np.save(os.path.join(gt_savepath,
+                    f"epoch{epoch}"), np.array(labels_list))
+
+            # Call Visualizer function to store output plots of pointclouds for this epoch
+            visualize(np.array(gp_list), np.array(
+                labels_list), model=args.model, epoch=epoch)
+
         print(f"Staring Evaluation with weights from this epoch")
         # Evaluation at same epoch
         with torch.no_grad():
             model.eval()
             eval_loss_list = []
-            for step, (points, labels) in tqdm(enumerate(test_loader), total=len(test_loader)):
-                points = points.float().to(device)
-                labels = labels.float().to(device)
-                points = points.transpose(2, 1)  # B x C x N
+            for step, (points, downsampled_points, labels) in tqdm(enumerate(test_loader), total=len(test_loader)):
+                points = points.type(torch.float32).to(
+                    device)  # B x N' x C (eg: N = 1024)
+                downsampled_points = downsampled_points.type(
+                    torch.float32).to(device)  # B x M x C (eg: M = 768)
+                labels = labels.type(torch.float32).to(
+                    device)  # B x N x C (eg: N' = 4096)
 
-                gp = model(points)
-                emd_loss, rep_loss = criterion(gp, labels, torch.Tensor(1))
-                loss = emd_loss + rep_loss
+                downsampled_points = downsampled_points.transpose(
+                    2, 1)  # B x C x N
+
+                # B x rM x C (eg: rM = 3072)
+                gp_first = model(downsampled_points)
+
+                gp = torch.cat((points, gp), dim=1)
+                magnetic_loss, emd_loss, rep_loss = criterion(
+                    int(knn_scale * ((100 - epoch+1) / 100)), points, gp_first, gp, labels, torch.Tensor(1))
+
+                print("magnetic loss: ", magnetic_loss)
+                loss = magnetic_loss + emd_loss + rep_loss
 
                 eval_loss_list.append(loss.item())
 
