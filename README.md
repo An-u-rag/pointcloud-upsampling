@@ -80,10 +80,9 @@ Check for the results in the `out/train` for training and `out/test` for testing
 ![Training on Stair Patch](https://drive.google.com/uc?export=view&id=14j5DUVkTzkdqgsOjDgmy48d3pG4VKgh9 "Training on Stair patch")
 
 ### Testing Results (shown for a single patch here)
-![Training on Chair Patch](https://drive.google.com/uc?export=view&id=1gUvGU1LX4jJhbpY5yUa42TPNx_DttqgB "Testing on Chair Patch")
+![Testing on Chair Patch](https://drive.google.com/uc?export=view&id=1gUvGU1LX4jJhbpY5yUa42TPNx_DttqgB "Testing on Chair Patch")
 
 ## References
-
 #### PointNet
 ```
 @article{qi2016pointnet,
