@@ -2,7 +2,7 @@
 An implementation of 3D Deep Learning and Traditional Computer Vision techniques to accurately upsample point clouds while being edge aware and respecting finer details. 
 
 ## Proposed Architecture
-![Architecture Edge-Punet](https://drive.google.com/file/d/16CdE2YnmeS-TXeWw9Ehmnosr_6Od64HJ/view?usp=share_link "Architecture")
+![Architecture Edge-Punet](https://drive.google.com/uc?export=view&id=16CdE2YnmeS-TXeWw9Ehmnosr_6Od64HJ "Architecture")
 
 ## Requirements
 1. Python v3.9
@@ -77,10 +77,10 @@ Check for the results in the `out/train` for training and `out/test` for testing
 ## Our Results with our Edge Aware Upsampling Model
 
 ### Training Results (shown for a single patch here)
-![Training on Stair Patch](https://drive.google.com/file/d/14j5DUVkTzkdqgsOjDgmy48d3pG4VKgh9/view?usp=share_link "Training on Stair patch")
+![Training on Stair Patch](https://drive.google.com/uc?export=view&id=14j5DUVkTzkdqgsOjDgmy48d3pG4VKgh9 "Training on Stair patch")
 
 ### Testing Results (shown for a single patch here)
-![Training on Chair Patch](https://drive.google.com/file/d/1gUvGU1LX4jJhbpY5yUa42TPNx_DttqgB/view?usp=share_link "Testing on Chair Patch")
+![Training on Chair Patch](https://drive.google.com/uc?export=view&id=1gUvGU1LX4jJhbpY5yUa42TPNx_DttqgB "Testing on Chair Patch")
 
 ## References
 
