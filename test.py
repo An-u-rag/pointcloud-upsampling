@@ -31,9 +31,9 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 def parse_args():
     parser = argparse.ArgumentParser('Model')
     parser.add_argument('--checkpoint', type=str, default="checkpoints/punet_object_concatres_magneticloss_knnscaling_reverseDecay/instant",
-                        help='checkpoint dir [default: punet]')
-    parser.add_argument('--model', type=str, default='punet',
-                        help='model name [default: punet]')
+                        help='checkpoint dir [default: checkpoints/edgepunet_default/instant]')
+    parser.add_argument('--model', type=str, default='edgepunet',
+                        help='model name [default: edgepunet]')
     parser.add_argument('--epochs', type=str, default="[0, 25, 45, 65, 95]",
                         help='epochs to test [default: [0, 25, 45, 65, 95]]')
     parser.add_argument('--batchsize', default=1, type=int,
@@ -50,7 +50,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def visualize(input_data, pred_data, ground_truth_data, model="punet", epoch=0):  # step x batch x n x 3
+def visualize(input_data, pred_data, ground_truth_data, model="edgepunet", epoch=0):  # step x batch x n x 3
     input_data = input_data.reshape(-1,
                                     input_data.shape[-2], input_data.shape[-1])
     pred_data = pred_data.reshape(-1, pred_data.shape[-2], pred_data.shape[-1])
@@ -126,7 +126,7 @@ def main(args):
             # Load PointNet++ Encoder Model for feature extraction
             model = PointNetPPEncoder(
                 is_color=False, is_normal=False).to(device)
-        elif args.model == "punet":
+        elif args.model == "edgepunet":
             # Load PU-Net for point upsampling
             model = PUnet(npoint=args.npoint, is_color=args.is_color,
                           is_normal=args.is_normal).to(device)

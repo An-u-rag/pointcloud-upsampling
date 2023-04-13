@@ -22,14 +22,13 @@ ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
 WRITE_DIR = "checkpoints"
 VISUAL_DIR = os.path.join("out", "train")
-counter = "_object_concatres_magneticloss_knnscaling_reverseDecay_lessrepulsion_gammabecomesalpha"
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 def parse_args():
     parser = argparse.ArgumentParser('Model')
-    parser.add_argument('--model', type=str, default='punet',
-                        help='model name [default: punet]')
+    parser.add_argument('--model', type=str, default='edgepunet',
+                        help='model name [default: edgepunet]')
     parser.add_argument('--epochs', default=32, type=int,
                         help='Epochs to run [default: 32]')
     parser.add_argument('--batchsize', default=8, type=int,
@@ -42,11 +41,13 @@ def parse_args():
                         help='If point in point cloud has r,g,b values [default: False]')
     parser.add_argument('--is_normal', type=bool, default=False,
                         help='If point in point cloud has normal values [default: False]')
+    parser.add_argument('--counter', type=str, default="default",
+                        help='For the unique identification of current training, naming of out folder')
 
     return parser.parse_args()
 
 
-def visualize(pred_data, ground_truth_data, model="punet", epoch=0):  # step x batch x n x 3
+def visualize(pred_data, ground_truth_data, model="edgepunet", epoch=0, counter="default"):  # step x batch x n x 3
     pred_data = pred_data.reshape(-1, pred_data.shape[-2], pred_data.shape[-1])
     ground_truth_data = ground_truth_data.reshape(
         -1, ground_truth_data.shape[-2], ground_truth_data.shape[-1])  # (step * batch) x n x 3
@@ -86,6 +87,7 @@ def main(args):
     # So the num_pointclouds should be same for both datasets
     BATCHSIZE = args.batchsize
     CHANNELS = 3
+    counter = args.counter
     if args.is_color:
         CHANNELS += 3
     if args.is_normal:
@@ -107,7 +109,7 @@ def main(args):
     if args.model == "pointnetpp" or args.model == "pointnet++":
         # Load PointNet++ Encoder Model for feature extraction
         model = PointNetPPEncoder(is_color=False, is_normal=False).to(device)
-    elif args.model == "punet":
+    elif args.model == "edgepunet":
         # Load PU-Net for point upsampling
         model = PUnet(npoint=args.npoint - (args.npoint//args.upsample_rate), is_color=args.is_color,
                       is_normal=args.is_normal).to(device)
@@ -211,7 +213,7 @@ def main(args):
 
             # Call Visualizer function to store output plots of pointclouds for this epoch
             visualize(np.array(gp_list), np.array(
-                labels_list), model=args.model, epoch=epoch)
+                labels_list), model=args.model, epoch=epoch, counter=counter)
 
         print(f"Staring Evaluation with weights from this epoch")
         # Evaluation at same epoch
